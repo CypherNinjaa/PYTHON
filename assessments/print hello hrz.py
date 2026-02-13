@@ -1,4 +1,6 @@
-str = "HELLO"
+word = "HELLO"
 
-for i in range(0,len(str)):
-    print(str[i])
+for letter in word:
+    if letter: 
+        pass     
+    print(letter)
