@@ -1,8 +1,13 @@
 class Addition:
     
-    def add(self, a, b):
-        return a + b
+    def add(self):
+        self.a = int(input("enter the 1st number: "))
+        self.b = int(input("enter the 2nd number: "))
+    
+    def display(self):
+       print("sum",self.a + self.b)
+
 calc = Addition()
 
-result = calc.add(10, 20)
-print("Sum =", result)
+calc.add()
+calc.display()
