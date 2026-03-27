@@ -1,0 +1,25 @@
+# Basic Data Types in Python
+
+# Integer
+x = 10
+
+# Float
+y = 3.14
+
+# String
+name = "Alice"
+
+# Boolean
+is_valid = True
+
+# List
+numbers = [1, 2, 3, 4, 5]
+
+# Tuple
+coordinates = (10, 20)
+
+# Dictionary
+person = {"name": "Bob", "age": 25}
+
+# Set
+unique_numbers = {1, 2, 3}

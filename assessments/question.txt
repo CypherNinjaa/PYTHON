@@ -1,0 +1,32 @@
+1. Define Python programming language and mention any two application areas of Python.
+
+Python is a high-level, interpreted, general-purpose programming language known for simple and readable syntax. Two application areas are web development and data science.
+
+2. What are identifiers and keywords with examples?
+
+Identifiers are names given to variables, functions, classes, etc., such as student_name or total1. Keywords are reserved words with fixed meaning in Python, such as if, for, and class.
+
+3. What is a string? Write any two built-in string functions.
+
+A string is a sequence of characters enclosed in single or double quotes. Two built-in string functions/methods are len() and upper().
+
+4. Differentiate between mutable and immutable objects.
+
+Mutable objects can be changed after creation (for example: list, dictionary, set). Immutable objects cannot be changed after creation (for example: int, tuple, string).
+
+5. What is operator precedence?
+
+Operator precedence is the rule that decides which operator is evaluated first in an expression. For example, in 2 + 3 * 4, multiplication is done before addition.
+
+6. Define type conversion with example.
+
+Type conversion is converting a value from one data type to another. Example: int("25") converts the string "25" into the integer 25.
+
+7. Write the syntax of input function and print function in Python.
+
+Input syntax: variable = input("Enter value: ")
+Print syntax: print("Message", variable)
+
+8. What is string slicing with example?
+
+String slicing means extracting a part of a string using index positions. Syntax: string[start:stop:step]. Example: text = "Python"; text[1:4] gives "yth".
