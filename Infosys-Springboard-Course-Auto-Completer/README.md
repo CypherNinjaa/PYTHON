@@ -69,27 +69,6 @@ Then follow the prompts to enter:
    ```
 3. Run: `python course_completer.py`
 
-### Desktop App (Electron)
-
-If you prefer a GUI instead of terminal prompts, use the Electron app in [electron-app/README.md](electron-app/README.md).
-
-1. Open terminal in `electron-app`
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start desktop app:
-   ```bash
-   npm start
-   ```
-
-Desktop app includes:
-
-- Full completion mode (all existing Python features)
-- .env picker
-- Quick completion mode (one course ID, instant run)
-- Live logs and stop control
-
 ## 🔑 How to Get Your Bearer Token
 
 1. Open **Infosys Springboard** and log in

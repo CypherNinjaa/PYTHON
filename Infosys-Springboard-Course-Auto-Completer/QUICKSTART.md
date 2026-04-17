@@ -80,20 +80,6 @@ Then provide:
    python course_completer.py
    ```
 
-### Option 3: Desktop App (Electron)
-
-1. Open terminal in `electron-app`
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Launch app:
-   ```bash
-   npm start
-   ```
-
-Desktop app supports full completion flow, .env selection, and quick completion by course ID.
-
 ## 📋 Getting Your Credentials
 
 ### Bearer Token

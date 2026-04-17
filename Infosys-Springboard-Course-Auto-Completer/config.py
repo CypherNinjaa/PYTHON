@@ -63,14 +63,6 @@ class ConfigManager:
             print(f"{Colors.YELLOW}⚠{Colors.ENDC} No .env file found at {self.env_file}")
 
     @staticmethod
-    def _is_truthy(value: Optional[str]) -> bool:
-        """Parse common truthy env values."""
-        if value is None:
-            return False
-
-        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-
-    @staticmethod
     def _extract_playlist_id(value: str) -> Optional[str]:
         """Extract playlist UUID from either playlist URL or raw UUID input."""
         if not value:
@@ -245,38 +237,8 @@ class ConfigManager:
             or ""
         )
         playlist_id = self._extract_playlist_id(playlist_raw)
-        auto_confirm = self._is_truthy(os.getenv('AUTO_CONFIRM', 'false'))
-        dry_run = self._is_truthy(os.getenv('DRY_RUN', 'false'))
-        non_interactive = self._is_truthy(os.getenv('NON_INTERACTIVE', 'false'))
-
-        # Non-interactive mode is intended for GUI/automation integrations.
-        if non_interactive:
-            if not token:
-                print(f"{Colors.RED}Error: Token is required in non-interactive mode!{Colors.ENDC}")
-                sys.exit(1)
-
-            default_target = 'playlist' if (env_target_type == 'playlist' or playlist_id) else 'course'
-            target_type = env_target_type if env_target_type in {'course', 'playlist'} else default_target
-
-            if target_type == 'course' and not course_ids:
-                print(f"{Colors.RED}Error: At least one valid Course ID/URL is required in non-interactive course mode!{Colors.ENDC}")
-                sys.exit(1)
-
-            if target_type == 'playlist' and not playlist_id:
-                print(f"{Colors.RED}Error: Playlist ID/URL is required in non-interactive playlist mode!{Colors.ENDC}")
-                sys.exit(1)
-
-            return Config(
-                token=token,
-                course_id=course_id,
-                course_ids=course_ids,
-                target_type=target_type,
-                playlist_id=playlist_id,
-                auto_confirm=auto_confirm,
-                dry_run=dry_run,
-                log_file=os.getenv('LOG_FILE', 'course_completer.log'),
-                verbose=True
-            )
+        auto_confirm = os.getenv('AUTO_CONFIRM', 'false').lower() == 'true'
+        dry_run = os.getenv('DRY_RUN', 'false').lower() == 'true'
 
         print(f"\n{Colors.BOLD}{Colors.CYAN}Configuration Setup{Colors.ENDC}\n")
 
