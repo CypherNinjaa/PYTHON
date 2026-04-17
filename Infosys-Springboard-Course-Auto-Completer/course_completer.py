@@ -7,6 +7,7 @@ Comprehensive course completion system supporting all content types.
 import sys
 import logging
 from pathlib import Path
+from typing import List, Dict, Any
 
 # Import our modules
 from config import ConfigManager, Config
@@ -49,21 +50,21 @@ class CourseCompleter:
             if not self._validate_authentication():
                 return
 
-            # Step 2: Fetch Course
-            print_section("Step 2: Fetching Course Content")
-            course_hierarchy = self._fetch_course_hierarchy()
-            if not course_hierarchy:
+            # Step 2: Resolve target courses (single course or playlist)
+            print_section("Step 2: Resolving Target Courses")
+            course_targets = self._resolve_course_targets()
+            if not course_targets:
                 return
 
-            # Step 3: Analyze Content
-            print_section("Step 3: Analyzing Content")
-            inventory = self._analyze_content(course_hierarchy)
-            if not inventory:
+            # Step 3: Fetch + analyze all target courses
+            print_section("Step 3: Fetching and Analyzing Content")
+            completable_items, aggregate = self._fetch_and_analyze_targets(course_targets)
+            if not completable_items:
                 return
 
             # Step 4: Display Summary
             print_section("Step 4: Content Summary")
-            if not self._display_summary(inventory):
+            if not self._display_aggregate_summary(aggregate):
                 return
 
             # Step 5: Get Confirmation
@@ -74,7 +75,7 @@ class CourseCompleter:
 
             # Step 6: Execute Completion
             print_section("Step 5: Auto-Completing Content")
-            self._complete_content(inventory)
+            self._complete_content(completable_items)
 
             # Step 7: Final Report
             print_section("Completion Report")
@@ -89,6 +90,186 @@ class CourseCompleter:
             sys.exit(1)
         finally:
             self._cleanup()
+
+    def _resolve_course_targets(self) -> List[Dict[str, str]]:
+        """Resolve completion targets into a list of course IDs and names."""
+        if self.config.target_type == "playlist":
+            return self._resolve_playlist_targets()
+
+        if not self.config.course_id:
+            print_error("Course ID is required in single-course mode")
+            return []
+
+        return [{
+            "id": self.config.course_id,
+            "name": self.config.course_id,
+        }]
+
+    def _resolve_playlist_targets(self) -> List[Dict[str, str]]:
+        """Resolve playlist into a list of course targets."""
+        playlist_id = self.config.playlist_id
+        playlist_title = self.config.playlist_title
+
+        if not playlist_id:
+            print_info("Fetching your playlists...")
+            playlists = self.api_client.fetch_playlists(self.config.user_id, page=0, size=50)
+
+            if not playlists:
+                print_error("No playlists found for your account")
+                return []
+
+            rows = []
+            for index, playlist in enumerate(playlists, 1):
+                pid = playlist.get("playlist_id") or playlist.get("playlistId") or ""
+                title = playlist.get("playlist_title") or playlist.get("playlistTitle") or pid
+                visibility = playlist.get("visibility") or ""
+                resource_ids = playlist.get("resource_ids") or playlist.get("resourceIds") or []
+                item_count = len(resource_ids) if isinstance(resource_ids, list) else 0
+                rows.append([index, title, item_count, visibility, pid])
+
+            print_info("\nAvailable playlists:")
+            print_table(["#", "Title", "Items", "Visibility", "Playlist ID"], rows, max_width=36)
+
+            selected = None
+            while selected is None:
+                choice = input("\nSelect playlist by number: ").strip()
+                if not choice.isdigit():
+                    print_warning("Please enter a valid number")
+                    continue
+
+                choice_index = int(choice)
+                if choice_index < 1 or choice_index > len(playlists):
+                    print_warning(f"Please choose a number between 1 and {len(playlists)}")
+                    continue
+
+                selected = playlists[choice_index - 1]
+
+            playlist_id = selected.get("playlist_id") or selected.get("playlistId")
+            playlist_title = selected.get("playlist_title") or selected.get("playlistTitle") or playlist_id
+
+        self.config.playlist_id = playlist_id
+        self.config.playlist_title = playlist_title or playlist_id
+
+        print_info(f"Using playlist: {self.config.playlist_title} ({self.config.playlist_id})")
+
+        try:
+            playlist_detail = self.api_client.get_playlist_detail(self.config.playlist_id, self.config.user_id)
+        except APIError as e:
+            print_error(f"Failed to fetch playlist details: {e}")
+            return []
+
+        targets = self.api_client.extract_course_targets_from_playlist(playlist_detail)
+        if not targets:
+            print_error("No course targets found in selected playlist")
+            return []
+
+        print_success(f"Playlist resolved to {len(targets)} course targets")
+
+        preview_rows = []
+        for idx, target in enumerate(targets[:20], 1):
+            preview_rows.append([idx, target["name"], target["id"]])
+
+        if preview_rows:
+            print_info("\nCourses in selected playlist:")
+            print_table(["#", "Course", "Course ID"], preview_rows, max_width=44)
+
+        if len(targets) > 20:
+            print_info(f"... and {len(targets) - 20} more courses")
+
+        return targets
+
+    def _fetch_and_analyze_targets(self, course_targets: List[Dict[str, str]]):
+        """Fetch and analyze all target courses, returning completable items and aggregate stats."""
+        aggregate = {
+            "target_courses": len(course_targets),
+            "total_items": 0,
+            "completable_items": 0,
+            "items_by_type": {},
+            "total_duration_seconds": 0.0,
+            "course_summaries": [],
+            "failed_courses": [],
+        }
+
+        all_completable_items = []
+
+        for idx, target in enumerate(course_targets, 1):
+            course_id = target["id"]
+            course_name = target.get("name") or course_id
+
+            print_info(f"[{idx}/{len(course_targets)}] Fetching course: {course_name}")
+
+            try:
+                course_data = self.api_client.get_course_hierarchy(course_id, self.config.user_id)
+            except APIError as e:
+                print_warning(f"Skipping {course_name} due to fetch error: {e}")
+                aggregate["failed_courses"].append(course_name)
+                continue
+
+            analyzer = ContentAnalyzer(self.logger)
+            inventory = analyzer.analyze(course_data)
+            summary = analyzer.get_summary()
+            completable_items = inventory.get_completable_items()
+
+            # Prefix item names in playlist mode to make failures easy to trace.
+            if self.config.target_type == "playlist":
+                for item in completable_items:
+                    item.name = f"[{course_name}] {item.name}"
+
+            all_completable_items.extend(completable_items)
+
+            aggregate["total_items"] += summary["total_items"]
+            aggregate["completable_items"] += summary["completable_items"]
+            aggregate["total_duration_seconds"] += summary["total_duration_seconds"]
+
+            for content_type, count in summary["items_by_type"].items():
+                aggregate["items_by_type"][content_type] = aggregate["items_by_type"].get(content_type, 0) + count
+
+            aggregate["course_summaries"].append([
+                course_name,
+                summary["completable_items"],
+                summary["total_items"],
+            ])
+
+        return all_completable_items, aggregate
+
+    def _display_aggregate_summary(self, aggregate: Dict[str, Any]) -> bool:
+        """Display aggregate summary for either single course or playlist mode."""
+        try:
+            print_info(f"Target courses: {aggregate['target_courses']}")
+            print_info(f"Courses analyzed: {len(aggregate['course_summaries'])}")
+            print_info(f"Total items found: {aggregate['total_items']}")
+            print_info(f"Completable items: {aggregate['completable_items']}")
+
+            if aggregate['course_summaries'] and len(aggregate['course_summaries']) > 1:
+                print_info("\nPer-course breakdown:")
+                print_table(["Course", "Completable", "Total"], aggregate['course_summaries'], max_width=40)
+
+            if aggregate['items_by_type']:
+                print_info("\nBreakdown by type:")
+                for content_type, count in sorted(aggregate['items_by_type'].items()):
+                    icon = get_icon_for_content_type(content_type)
+                    print(f"  {icon} {content_type}: {count}")
+
+            if aggregate['total_duration_seconds'] > 0:
+                formatted_duration = format_duration(aggregate['total_duration_seconds'])
+                print_info(f"\nTotal content duration: {formatted_duration}")
+
+            if aggregate['failed_courses']:
+                print_warning(f"\nSkipped courses due to errors: {len(aggregate['failed_courses'])}")
+                for failed in aggregate['failed_courses'][:5]:
+                    print(f"  - {failed}")
+                if len(aggregate['failed_courses']) > 5:
+                    print(f"  ... and {len(aggregate['failed_courses']) - 5} more")
+
+            if aggregate['completable_items'] == 0:
+                print_warning("No completable items found")
+                return False
+
+            return True
+
+        except Exception as e:
+            print_error(f"Error displaying summary: {e}")
+            return False
 
     def _validate_authentication(self) -> bool:
         """
@@ -194,15 +375,14 @@ class CourseCompleter:
             print_error(f"Error displaying summary: {e}")
             return False
 
-    def _complete_content(self, inventory):
+    def _complete_content(self, completable_items):
         """
         Complete all content items.
 
         Args:
-            inventory: Content inventory
+            completable_items: List of content items to complete
         """
         try:
-            completable_items = inventory.get_completable_items()
             self.tracker = ProgressTracker(len(completable_items))
             self.strategy = CompletionStrategy(self.api_client, self.logger)
 

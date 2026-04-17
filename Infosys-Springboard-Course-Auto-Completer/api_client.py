@@ -7,7 +7,7 @@ import requests
 import json
 import time
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -111,6 +111,12 @@ class APIClient:
             time.sleep(self.REQUEST_DELAY - elapsed)
         self.last_request_time = time.time()
 
+    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """Send an HTTP request after applying global rate limiting."""
+        self._apply_rate_limit()
+        timeout = kwargs.pop('timeout', 15)
+        return self.session.request(method=method, url=url, timeout=timeout, **kwargs)
+
     def _handle_response_error(self, response: requests.Response, action: str):
         """
         Handle API response errors.
@@ -152,6 +158,23 @@ class APIClient:
             self.logger.error(f"API error: {error_detail}")
             raise APIError(f"{error_detail}")
 
+    def _extract_error_codes(self, response: requests.Response) -> list:
+        """Extract API error codes from a failed response payload."""
+        try:
+            data = response.json()
+        except Exception:
+            return []
+
+        errors = data.get('errors') if isinstance(data, dict) else None
+        if not isinstance(errors, list):
+            return []
+
+        codes = []
+        for error in errors:
+            if isinstance(error, dict) and error.get('code'):
+                codes.append(error['code'])
+        return codes
+
     def validate_user(self) -> Tuple[str, str]:
         """
         Validate the bearer token and get user information.
@@ -167,10 +190,9 @@ class APIClient:
         headers = self._get_headers()
 
         self.logger.info("Validating authentication token...")
-        self._apply_rate_limit()
 
         try:
-            response = self.session.get(url, headers=headers, timeout=10)
+            response = self._request("GET", url, headers=headers, timeout=10)
 
             if not response.ok:
                 self._handle_response_error(response, "User validation")
@@ -214,10 +236,9 @@ class APIClient:
         headers = self._get_headers(include_wid=user_id)
 
         self.logger.info(f"Fetching course hierarchy for course: {course_id}")
-        self._apply_rate_limit()
 
         try:
-            response = self.session.get(url, headers=headers, params=params, timeout=15)
+            response = self._request("GET", url, headers=headers, params=params, timeout=15)
 
             if not response.ok:
                 self._handle_response_error(response, "Course hierarchy fetch")
@@ -235,6 +256,163 @@ class APIClient:
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Request error during course fetch: {e}")
             raise APIError(f"Failed to fetch course: {str(e)}")
+
+    def fetch_playlists(self, user_id: str, page: int = 0, size: int = 25) -> List[Dict[str, Any]]:
+        """
+        Fetch playlists for a user.
+
+        Args:
+            user_id: User ID (wid)
+            page: Page number (0-based)
+            size: Number of playlists per page
+
+        Returns:
+            List of playlist metadata dictionaries
+        """
+        url = f"{self.BASE_URL}/api-gw/wn-apis/infosysheadstart/playlist/v2/playlists/fetch"
+        headers = self._get_headers(include_wid=user_id)
+
+        payloads = [
+            {
+                "user_id": user_id,
+                "user_id_type": "wid",
+                "status": ["Pending"],
+                "visibility": "all",
+                "page": page,
+                "size": size,
+                "sourceFields": [],
+                "user_meta_required": False,
+                "content_meta_required": False,
+            },
+            {
+                "user_id": user_id,
+                "user_id_type": "wid",
+                "visibility": "all",
+                "page": page,
+                "size": size,
+                "sourceFields": [],
+                "user_meta_required": False,
+                "content_meta_required": False,
+            },
+        ]
+
+        last_error = None
+
+        for payload in payloads:
+            try:
+                response = self._request("POST", url, headers=headers, json=payload, timeout=20)
+
+                if not response.ok:
+                    self._handle_response_error(response, "Playlist fetch")
+
+                data = response.json() if response.content else {}
+                playlists = data.get("data", []) if isinstance(data, dict) else []
+                if playlists:
+                    return playlists
+
+            except APIError as e:
+                last_error = e
+            except requests.exceptions.RequestException as e:
+                last_error = e
+
+        if last_error:
+            self.logger.warning(f"Playlist fetch fallback completed with no playlists: {last_error}")
+
+        return []
+
+    def get_playlist_detail(self, playlist_id: str, user_id: str) -> Dict[str, Any]:
+        """
+        Fetch full playlist details including resources.
+
+        Args:
+            playlist_id: Playlist UUID
+            user_id: User ID (wid)
+
+        Returns:
+            Playlist detail payload
+
+        Raises:
+            APIError: If playlist fetch fails
+        """
+        url = f"{self.BASE_URL}/api-gw/wn-apis/infosysheadstart/playlist/v2/playlists/{playlist_id}"
+        headers = self._get_headers(include_wid=user_id)
+        params = {
+            "sourceFields": "undefined",
+            "user_id": user_id,
+        }
+
+        try:
+            response = self._request("GET", url, headers=headers, params=params, timeout=25)
+
+            if not response.ok:
+                self._handle_response_error(response, "Playlist detail fetch")
+
+            return response.json()
+
+        except requests.exceptions.Timeout:
+            raise APIError("Request timeout while fetching playlist details")
+        except requests.exceptions.ConnectionError:
+            raise APIError("Connection error while fetching playlist details")
+        except requests.exceptions.RequestException as e:
+            raise APIError(f"Failed to fetch playlist details: {str(e)}")
+
+    @staticmethod
+    def extract_course_targets_from_playlist(playlist_data: Dict[str, Any]) -> List[Dict[str, str]]:
+        """
+        Extract course targets from a playlist detail payload.
+
+        Returns a list of dictionaries with keys: id, name.
+        """
+        targets: List[Dict[str, str]] = []
+        seen = set()
+
+        def add_target(identifier: Optional[str], name: Optional[str]):
+            if not identifier or not isinstance(identifier, str):
+                return
+            if identifier.endswith('.img'):
+                return
+            if identifier in seen:
+                return
+
+            seen.add(identifier)
+            targets.append({
+                "id": identifier,
+                "name": (name or identifier).strip() if isinstance(name, str) else identifier,
+            })
+
+        # Detailed resource objects from playlist detail endpoint.
+        resource_objects = playlist_data.get("resource_ids")
+        if isinstance(resource_objects, list):
+            for resource in resource_objects:
+                if isinstance(resource, dict):
+                    identifier = resource.get("identifier")
+                    name = resource.get("name")
+                    content_type = str(resource.get("contentType") or "").lower()
+                    mime_type = str(resource.get("mimeType") or "").lower()
+
+                    is_course_like = (
+                        content_type in {"course", "collection"}
+                        or "content-collection" in mime_type
+                    )
+
+                    if is_course_like:
+                        add_target(identifier, name)
+
+        # Fallback to raw resource IDs when metadata is unavailable.
+        fallback_ids = playlist_data.get("resourceIds")
+        if isinstance(fallback_ids, list):
+            for identifier in fallback_ids:
+                if isinstance(identifier, str):
+                    add_target(identifier, identifier)
+
+        # Final fallback for payload variants that expose snake_case string IDs.
+        alt_ids = playlist_data.get("resource_ids")
+        if isinstance(alt_ids, list):
+            for identifier in alt_ids:
+                if isinstance(identifier, str):
+                    add_target(identifier, identifier)
+
+        return targets
 
     def mark_content_complete(
         self,
@@ -271,23 +449,79 @@ class APIClient:
             "userId": user_id
         }
 
+        # Some Infosys MIME types (quiz/hands-on/exercise) require explicit progress.
+        progress_payload = {
+            "contentId": content_id,
+            "progress": completion_percentage,
+            "maxSize": max_size,
+            "visited": [visited_progress],
+            "userId": user_id
+        }
+
+        # Browser "Mark as complete" button sends this compact payload shape.
+        mark_complete_payload = {
+            "contentId": content_id,
+            "markAsComplete": True,
+            "userId": user_id
+        }
+
         self.logger.debug(f"Marking content {content_id} as complete: {completion_percentage}%")
-        self._apply_rate_limit()
 
         try:
-            response = self.session.post(
-                url,
-                headers=headers,
-                json=payload,
-                timeout=10
+            response = self._request("POST", url, headers=headers, json=payload, timeout=10)
+
+            if response.ok:
+                self.logger.debug(f"Successfully marked {content_id} as complete")
+                return True
+
+            error_codes = self._extract_error_codes(response)
+            requires_progress_payload = any(
+                code in {
+                    'progress.mandatory.for.mimeType',
+                    'invalid.mimeType.for.caller'
+                }
+                for code in error_codes
             )
 
-            if not response.ok:
-                self._handle_response_error(response, f"Mark content {content_id} complete")
+            if requires_progress_payload:
+                self.logger.debug(
+                    f"Retrying {content_id} with progress payload due to API validation: {error_codes}"
+                )
+                progress_response = self._request(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json=progress_payload,
+                    timeout=10
+                )
+
+                if progress_response.ok:
+                    self.logger.debug(f"Successfully marked {content_id} as complete via progress payload")
+                    return True
+
+                # Final fallback: emulate the UI "Mark as complete" action.
+                self.logger.debug(
+                    f"Retrying {content_id} with browser-style markAsComplete payload"
+                )
+                mark_complete_response = self._request(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json=mark_complete_payload,
+                    timeout=10
+                )
+
+                if mark_complete_response.ok:
+                    self.logger.debug(
+                        f"Successfully marked {content_id} as complete via markAsComplete payload"
+                    )
+                    return True
+
+                self._handle_response_error(mark_complete_response, f"Mark content {content_id} complete")
                 return False
 
-            self.logger.debug(f"Successfully marked {content_id} as complete")
-            return True
+            self._handle_response_error(response, f"Mark content {content_id} complete")
+            return False
 
         except APIError as e:
             self.logger.warning(f"Failed to mark {content_id} complete: {e}")
@@ -317,8 +551,7 @@ class APIClient:
 
         for url in endpoints:
             try:
-                self._apply_rate_limit()
-                response = self.session.get(url, headers=headers, timeout=5)
+                response = self._request("GET", url, headers=headers, timeout=5)
                 if response.ok:
                     self.logger.debug(f"Found quiz data for {content_id}")
                     return response.json()
@@ -356,16 +589,10 @@ class APIClient:
         }
 
         self.logger.debug(f"Submitting quiz {content_id} with payload: {payload}")
-        self._apply_rate_limit()
 
         for url in endpoints:
             try:
-                response = self.session.post(
-                    url,
-                    headers=headers,
-                    json=payload,
-                    timeout=10
-                )
+                response = self._request("POST", url, headers=headers, json=payload, timeout=10)
 
                 if response.ok:
                     self.logger.debug(f"Successfully submitted quiz {content_id}")

@@ -140,20 +140,6 @@ class QuizCompleter(ContentCompleter):
     def complete(self, item: ContentItem, user_id: str) -> Tuple[bool, str]:
         """Complete quiz/assessment by submitting it."""
         try:
-            # First, try to submit the quiz with a submission endpoint
-            # This handles quizzes that require special submission flow
-            submit_success = self.api_client.submit_quiz(
-                content_id=item.identifier,
-                user_id=user_id,
-                answers={}  # Submit with empty answers first
-            )
-
-            if submit_success:
-                self.logger.info(f"Successfully submitted quiz {item.identifier}")
-                return True, f"Marked quiz '{item.name}' as completed"
-
-            # If quiz submission fails, try the standard progress endpoint
-            # This handles assessments that use the regular completion endpoint
             standard_success = self.api_client.mark_content_complete(
                 content_id=item.identifier,
                 user_id=user_id,
@@ -162,6 +148,17 @@ class QuizCompleter(ContentCompleter):
             )
 
             if standard_success:
+                return True, f"Marked quiz '{item.name}' as completed"
+
+            # Fallback: try submission endpoint for quiz types with dedicated flows.
+            submit_success = self.api_client.submit_quiz(
+                content_id=item.identifier,
+                user_id=user_id,
+                answers={}
+            )
+
+            if submit_success:
+                self.logger.info(f"Successfully submitted quiz {item.identifier}")
                 return True, f"Marked quiz '{item.name}' as completed"
 
             # Both methods failed

@@ -89,15 +89,27 @@ class ContentAnalyzer:
 
     # MIME type patterns for content classification
     MIME_TYPE_PATTERNS = {
-        ContentType.VIDEO: ['video/'],
+        ContentType.VIDEO: ['video/', 'application/x-mpegurl'],
         ContentType.AUDIO: ['audio/'],
         ContentType.PDF: ['application/pdf'],
-        ContentType.DOCUMENT: ['application/msword', 'application/vnd.openxmlformats', 'application/zip'],
+        ContentType.DOCUMENT: [
+            'application/msword',
+            'application/vnd.openxmlformats',
+            'application/zip',
+            'application/web-module'
+        ],
         ContentType.IMAGE: ['image/'],
         ContentType.TEXT: ['text/'],
-        ContentType.QUIZ: ['quiz'],
-        ContentType.ASSESSMENT: ['assessment', 'exam'],
+        ContentType.QUIZ: ['application/quiz', 'quiz'],
+        ContentType.ASSESSMENT: [
+            'assessment',
+            'exam',
+            'application/integrated-hands-on',
+            'application/web-module-exercise',
+            'application/iap-assessment'
+        ],
         ContentType.DISCUSSION: ['discussion', 'forum'],
+        ContentType.SECTION: ['application/vnd.ekstep.content-collection'],
     }
 
     def __init__(self, logger: Optional[logging.Logger] = None):
@@ -161,7 +173,7 @@ class ContentAnalyzer:
                 content_type = self._categorize_mime_type(mime_type, content_name)
 
                 # Determine if this is a container (has children)
-                has_children = 'children' in data and data['children']
+                has_children = bool(data.get('children'))
 
                 # Create content item
                 item = ContentItem(
