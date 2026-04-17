@@ -5,7 +5,7 @@ class evenodd:
             print("It is an even number")
         else:
             print("It is an odd number")
-
+            
 # Child class
 class fact(evenodd):
     def factorial(self, n):
@@ -14,8 +14,7 @@ class fact(evenodd):
             fact *= i
         print("Factorial is:", fact)
 
-
 obj = fact()
-
-obj.Evenodd(5)
-obj.factorial(5)
+a = int(input("Enter the number: "))
+obj.Evenodd(a)
+obj.factorial(a)
