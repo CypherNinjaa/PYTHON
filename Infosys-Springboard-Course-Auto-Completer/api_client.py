@@ -231,31 +231,61 @@ class APIClient:
         Raises:
             APIError: If course fetch fails
         """
-        url = f"{self.BASE_URL}/api-gw/wn-apis/infosysheadstart/hierarchy-service/level/{course_id}/2"
         params = {'sourceFields': 'appIconLarge'}
         headers = self._get_headers(include_wid=user_id)
 
         self.logger.info(f"Fetching course hierarchy for course: {course_id}")
 
-        try:
-            response = self._request("GET", url, headers=headers, params=params, timeout=15)
+        # Level 3 captures deeper practice-problem nodes for many courses.
+        # Keep level 2 fallback for compatibility when level 3 responses are sparse.
+        levels_to_try = [3, 2]
+        last_error = None
 
-            if not response.ok:
-                self._handle_response_error(response, "Course hierarchy fetch")
+        for level in levels_to_try:
+            url = f"{self.BASE_URL}/api-gw/wn-apis/infosysheadstart/hierarchy-service/level/{course_id}/{level}"
 
-            data = response.json()
-            self.logger.info("Course hierarchy fetched successfully")
-            return data
+            try:
+                response = self._request("GET", url, headers=headers, params=params, timeout=15)
 
-        except requests.exceptions.Timeout:
-            self.logger.error("Request timeout during course fetch")
-            raise APIError("Request timeout. Course fetch taking too long.")
-        except requests.exceptions.ConnectionError:
-            self.logger.error("Connection error during course fetch")
-            raise APIError("Connection error during course fetch.")
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Request error during course fetch: {e}")
-            raise APIError(f"Failed to fetch course: {str(e)}")
+                if not response.ok:
+                    self._handle_response_error(response, f"Course hierarchy fetch (level={level})")
+
+                data = response.json()
+                children = data.get("children") if isinstance(data, dict) else None
+                has_children = isinstance(children, list) and len(children) > 0
+
+                if level == 3 and not has_children:
+                    self.logger.warning("Hierarchy level 3 returned no children; retrying with level 2")
+                    continue
+
+                self.logger.info(f"Course hierarchy fetched successfully (level={level})")
+                return data
+
+            except APIError as e:
+                last_error = e
+                if level != levels_to_try[-1]:
+                    self.logger.warning(f"Hierarchy fetch failed at level {level}; trying fallback level")
+                    continue
+            except requests.exceptions.Timeout as e:
+                last_error = APIError("Request timeout. Course fetch taking too long.")
+                self.logger.error("Request timeout during course fetch")
+                if level != levels_to_try[-1]:
+                    continue
+            except requests.exceptions.ConnectionError as e:
+                last_error = APIError("Connection error during course fetch.")
+                self.logger.error("Connection error during course fetch")
+                if level != levels_to_try[-1]:
+                    continue
+            except requests.exceptions.RequestException as e:
+                last_error = APIError(f"Failed to fetch course: {str(e)}")
+                self.logger.error(f"Request error during course fetch: {e}")
+                if level != levels_to_try[-1]:
+                    continue
+
+        if last_error:
+            raise last_error
+
+        raise APIError("Failed to fetch course hierarchy")
 
     def fetch_playlists(self, user_id: str, page: int = 0, size: int = 25) -> List[Dict[str, Any]]:
         """

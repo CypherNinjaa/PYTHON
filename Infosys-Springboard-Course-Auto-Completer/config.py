@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+from urllib.parse import parse_qs, unquote, urlparse
 from dotenv import load_dotenv
 
 # Color codes for terminal output
@@ -62,6 +63,14 @@ class ConfigManager:
             print(f"{Colors.YELLOW}⚠{Colors.ENDC} No .env file found at {self.env_file}")
 
     @staticmethod
+    def _is_truthy(value: Optional[str]) -> bool:
+        """Parse common truthy env values."""
+        if value is None:
+            return False
+
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    @staticmethod
     def _extract_playlist_id(value: str) -> Optional[str]:
         """Extract playlist UUID from either playlist URL or raw UUID input."""
         if not value:
@@ -82,17 +91,72 @@ class ConfigManager:
         return None
 
     @staticmethod
+    def _split_course_references(value: str) -> List[str]:
+        """Split mixed IDs/URLs while preserving commas inside URL query values."""
+        if not value:
+            return []
+
+        references: List[str] = []
+        text = value.strip()
+        index = 0
+        length = len(text)
+
+        while index < length:
+            # Skip leading separators/whitespace.
+            while index < length and text[index] in " \t\r\n,;":
+                index += 1
+            if index >= length:
+                break
+
+            if text.startswith("http://", index) or text.startswith("https://", index):
+                start = index
+                index += 1
+
+                while index < length:
+                    char = text[index]
+
+                    if char in "\r\n;":
+                        break
+
+                    # Treat comma as URL separator only when another URL follows.
+                    if char == ",":
+                        lookahead = index + 1
+                        while lookahead < length and text[lookahead].isspace():
+                            lookahead += 1
+
+                        if text.startswith("http://", lookahead) or text.startswith("https://", lookahead):
+                            break
+
+                    index += 1
+
+                token = text[start:index].strip().rstrip(",")
+                if token:
+                    references.append(token)
+
+                continue
+
+            start = index
+            while index < length and text[index] not in ",;\r\n":
+                index += 1
+
+            token = text[start:index].strip()
+            if token:
+                references.append(token)
+
+        return references
+
+    @staticmethod
     def _parse_course_ids(value: str) -> List[str]:
         """Parse one or many course IDs from env/input text."""
         if not value:
             return []
 
-        raw_tokens = re.split(r"[\n,;]+", value)
+        raw_tokens = ConfigManager._split_course_references(value)
         ids: List[str] = []
         seen = set()
 
         for token in raw_tokens:
-            course_id = token.strip()
+            course_id = ConfigManager._extract_course_id_from_reference(token)
             if not course_id or course_id in seen:
                 continue
 
@@ -100,6 +164,58 @@ class ConfigManager:
             ids.append(course_id)
 
         return ids
+
+    @staticmethod
+    def _extract_course_id_from_reference(value: str) -> Optional[str]:
+        """Extract parent course ID from raw ID, TOC URL, or viewer URL."""
+        if not value:
+            return None
+
+        reference = unquote(value.strip())
+        if not reference:
+            return None
+
+        # Course overview URL: /toc/<course_id>/overview
+        toc_match = re.search(r"/toc/([^/?#]+)", reference)
+        if toc_match:
+            return toc_match.group(1).strip()
+
+        # Viewer URL: parent course ID lives in query param collectionId.
+        parsed = urlparse(reference)
+        query = parse_qs(parsed.query)
+        collection_id = (query.get("collectionId") or [None])[0]
+        collection_type = (query.get("collectionType") or [None])[0]
+        if collection_id and (not collection_type or collection_type.lower() == "course"):
+            return collection_id.strip()
+
+        # Fallback for copied query strings that are not full URLs.
+        cid_match = re.search(r"(?:\?|&)collectionId=([^&#]+)", reference)
+        ctype_match = re.search(r"(?:\?|&)collectionType=([^&#]+)", reference)
+        if cid_match:
+            ctype = ctype_match.group(1).strip().lower() if ctype_match else "course"
+            if ctype == "course":
+                return cid_match.group(1).strip()
+
+        # Raw course ID input.
+        if re.fullmatch(r"lex(?:_auth)?_[A-Za-z0-9]+_shared", reference):
+            return reference
+
+        return None
+
+    @staticmethod
+    def _merge_course_ids(values: List[str]) -> List[str]:
+        """Parse and merge unique course IDs from many env/input values."""
+        merged: List[str] = []
+        seen = set()
+
+        for value in values:
+            for course_id in ConfigManager._parse_course_ids(value):
+                if course_id in seen:
+                    continue
+                seen.add(course_id)
+                merged.append(course_id)
+
+        return merged
 
     def get_config(self, skip_validation: bool = False) -> Config:
         """
@@ -113,14 +229,12 @@ class ConfigManager:
         """
         # Try to get from environment first
         token = os.getenv('INFOSYS_TOKEN') or os.getenv('token')
-        course_ids_raw = (
-            os.getenv('INFOSYS_COURSE_IDS')
-            or os.getenv('courseids')
-            or os.getenv('INFOSYS_COURSE_ID')
-            or os.getenv('courseid')
-            or ""
-        )
-        course_ids = self._parse_course_ids(course_ids_raw)
+        course_ids = self._merge_course_ids([
+            os.getenv('INFOSYS_COURSE_IDS') or os.getenv('courseids') or "",
+            os.getenv('INFOSYS_COURSE_ID') or os.getenv('courseid') or "",
+            os.getenv('INFOSYS_TARGET_URLS') or os.getenv('targeturls') or "",
+            os.getenv('INFOSYS_TARGET_URL') or os.getenv('targeturl') or "",
+        ])
         course_id = course_ids[0] if course_ids else None
         env_target_type = (os.getenv('TARGET_TYPE') or "").strip().lower()
         playlist_raw = (
@@ -131,8 +245,38 @@ class ConfigManager:
             or ""
         )
         playlist_id = self._extract_playlist_id(playlist_raw)
-        auto_confirm = os.getenv('AUTO_CONFIRM', 'false').lower() == 'true'
-        dry_run = os.getenv('DRY_RUN', 'false').lower() == 'true'
+        auto_confirm = self._is_truthy(os.getenv('AUTO_CONFIRM', 'false'))
+        dry_run = self._is_truthy(os.getenv('DRY_RUN', 'false'))
+        non_interactive = self._is_truthy(os.getenv('NON_INTERACTIVE', 'false'))
+
+        # Non-interactive mode is intended for GUI/automation integrations.
+        if non_interactive:
+            if not token:
+                print(f"{Colors.RED}Error: Token is required in non-interactive mode!{Colors.ENDC}")
+                sys.exit(1)
+
+            default_target = 'playlist' if (env_target_type == 'playlist' or playlist_id) else 'course'
+            target_type = env_target_type if env_target_type in {'course', 'playlist'} else default_target
+
+            if target_type == 'course' and not course_ids:
+                print(f"{Colors.RED}Error: At least one valid Course ID/URL is required in non-interactive course mode!{Colors.ENDC}")
+                sys.exit(1)
+
+            if target_type == 'playlist' and not playlist_id:
+                print(f"{Colors.RED}Error: Playlist ID/URL is required in non-interactive playlist mode!{Colors.ENDC}")
+                sys.exit(1)
+
+            return Config(
+                token=token,
+                course_id=course_id,
+                course_ids=course_ids,
+                target_type=target_type,
+                playlist_id=playlist_id,
+                auto_confirm=auto_confirm,
+                dry_run=dry_run,
+                log_file=os.getenv('LOG_FILE', 'course_completer.log'),
+                verbose=True
+            )
 
         print(f"\n{Colors.BOLD}{Colors.CYAN}Configuration Setup{Colors.ENDC}\n")
 
@@ -168,20 +312,20 @@ class ConfigManager:
 
         if target_type == 'course':
             if not course_ids:
-                print(f"\n{Colors.CYAN}Enter Course ID(s):{Colors.ENDC}")
-                print(f"{Colors.YELLOW}(Use comma/newline separated values for multiple IDs){Colors.ENDC}")
-                print(f"{Colors.YELLOW}(Get IDs from course URL: /toc/[COURSE_ID]/overview){Colors.ENDC}")
-                course_input = input(f"{Colors.CYAN}Course ID(s): {Colors.ENDC}").strip()
+                print(f"\n{Colors.CYAN}Enter Course ID(s) or URL(s):{Colors.ENDC}")
+                print(f"{Colors.YELLOW}(Supports raw course IDs, TOC URLs, and viewer URLs){Colors.ENDC}")
+                print(f"{Colors.YELLOW}(Use comma/newline/semicolon separated values for multiple targets){Colors.ENDC}")
+                course_input = input(f"{Colors.CYAN}Course ID(s)/URL(s): {Colors.ENDC}").strip()
                 course_ids = self._parse_course_ids(course_input)
                 course_id = course_ids[0] if course_ids else None
             else:
                 if len(course_ids) == 1:
-                    print(f"{Colors.GREEN}✓{Colors.ENDC} Course ID loaded from environment")
+                    print(f"{Colors.GREEN}✓{Colors.ENDC} Course target loaded from environment")
                 else:
-                    print(f"{Colors.GREEN}✓{Colors.ENDC} {len(course_ids)} course IDs loaded from environment")
+                    print(f"{Colors.GREEN}✓{Colors.ENDC} {len(course_ids)} course targets loaded from environment")
 
             if not course_ids:
-                print(f"{Colors.RED}Error: At least one Course ID is required in course mode!{Colors.ENDC}")
+                print(f"{Colors.RED}Error: At least one valid Course ID/URL is required in course mode!{Colors.ENDC}")
                 sys.exit(1)
         else:
             if playlist_id:
@@ -228,6 +372,12 @@ INFOSYS_TOKEN=your_bearer_token_here
 # Course IDs (single or multiple, comma-separated)
 INFOSYS_COURSE_IDS=lex_auth_xxxxxxxxxxxxxxxxxx_shared,lex_auth_yyyyyyyyyyyyyyyyyy_shared
 
+# Optional: course URL(s). Parser extracts parent course ID automatically.
+# Works with:
+# - TOC URL: .../toc/<course_id>/overview
+# - Viewer URL: .../viewer/...?...collectionId=<parent_course_id>&collectionType=Course
+# INFOSYS_TARGET_URLS=https://infyspringboard.onwingspan.com/web/en/app/toc/lex_auth_012734003600908288382_shared/overview
+
 # Backward-compatible single course ID
 # INFOSYS_COURSE_ID=lex_auth_xxxxxxxxxxxxxxxxxx_shared
 
@@ -262,6 +412,9 @@ INFOSYS_TOKEN=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Ik...
 # Use one ID or multiple comma-separated IDs.
 # Get each from course URL: https://infyspringboard.onwingspan.com/web/en/app/toc/[COURSE_ID]/overview
 INFOSYS_COURSE_IDS=lex_auth_0125409616243425281061_shared
+
+# Optional: course URL(s). Parent course ID is auto-extracted.
+# INFOSYS_TARGET_URLS=https://infyspringboard.onwingspan.com/web/en/viewer/hands-on/lex_auth_0127136112798105601178_shared?collectionId=lex_auth_012734003600908288382_shared&collectionType=Course&pathId=lex_auth_0127136535829708801223_shared,lex_auth_0127136597324103681226_shared
 
 # Backward-compatible single course ID
 # INFOSYS_COURSE_ID=lex_auth_0125409616243425281061_shared

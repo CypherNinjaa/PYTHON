@@ -54,7 +54,7 @@ python course_completer.py
 Then follow the prompts to enter:
 
 - Your Bearer Token
-- Course ID(s) (single or multiple, comma-separated)
+- Course ID(s) or URL(s) (single or multiple, comma-separated)
 - Optional settings (auto-confirm, dry-run mode)
 
 ### Using .env File
@@ -64,8 +64,31 @@ Then follow the prompts to enter:
    ```
    INFOSYS_TOKEN=your_token_here
    INFOSYS_COURSE_IDS=your_course_id_here,another_course_id_here
+   # optional alternative input
+   INFOSYS_TARGET_URLS=https://infyspringboard.onwingspan.com/web/en/app/toc/lex_auth_012734003600908288382_shared/overview
    ```
 3. Run: `python course_completer.py`
+
+### Desktop App (Electron)
+
+If you prefer a GUI instead of terminal prompts, use the Electron app in [electron-app/README.md](electron-app/README.md).
+
+1. Open terminal in `electron-app`
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start desktop app:
+   ```bash
+   npm start
+   ```
+
+Desktop app includes:
+
+- Full completion mode (all existing Python features)
+- .env picker
+- Quick completion mode (one course ID, instant run)
+- Live logs and stop control
 
 ## 🔑 How to Get Your Bearer Token
 
@@ -106,6 +129,22 @@ Then follow the prompts to enter:
    ```
    lex_auth_0138419214303969287290_shared
    ```
+
+### URL Pattern (Parent/Child Relationship)
+
+The tool now auto-detects the parent course ID from both URL types:
+
+- **TOC URL**
+  - Pattern: `/toc/<parent_course_id>/overview`
+  - Example parent course ID: `lex_auth_012734003600908288382_shared`
+
+- **Viewer URL**
+  - Pattern: `/viewer/hands-on/<content_id>?collectionId=<parent_course_id>&collectionType=Course&pathId=<node1>,<node2>,...`
+  - `<content_id>` is the practice-problem content item
+  - `collectionId` is the parent course ID used for completion
+  - `pathId` is the child hierarchy path inside the course (section/subsection lineage)
+
+So even if practice problems have different content IDs, their shared `collectionId` maps them to the same parent course.
 
 ## 📊 Example Output
 
@@ -201,6 +240,10 @@ INFOSYS_TOKEN=eyJhbGciOiJSUzI1NiIs...
 
 # Required for course mode: one or many course IDs
 INFOSYS_COURSE_IDS=lex_auth_0125409616243425281061_shared,lex_auth_0138419214303969287290_shared
+
+# Optional: provide URL(s) instead of IDs; parent course IDs are extracted automatically
+# INFOSYS_TARGET_URLS=https://infyspringboard.onwingspan.com/web/en/app/toc/lex_auth_012734003600908288382_shared/overview
+# INFOSYS_TARGET_URLS=https://infyspringboard.onwingspan.com/web/en/viewer/hands-on/lex_auth_0127136112798105601178_shared?collectionId=lex_auth_012734003600908288382_shared&collectionType=Course&pathId=lex_auth_0127136535829708801223_shared,lex_auth_0127136597324103681226_shared
 
 # Optional legacy single-course variable (still supported)
 # INFOSYS_COURSE_ID=lex_auth_0125409616243425281061_shared

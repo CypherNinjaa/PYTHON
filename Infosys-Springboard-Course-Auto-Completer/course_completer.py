@@ -5,6 +5,7 @@ Comprehensive course completion system supporting all content types.
 """
 
 import sys
+import os
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
@@ -480,7 +481,8 @@ def main():
     logger = setup_logging(verbose=True)
 
     # Load configuration
-    config_manager = ConfigManager(env_file=".env")
+    env_file = os.getenv("INFOSYS_ENV_FILE", ".env")
+    config_manager = ConfigManager(env_file=env_file)
     config = config_manager.get_config()
 
     # Create and run completer

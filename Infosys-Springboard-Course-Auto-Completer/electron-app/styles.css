@@ -1,0 +1,179 @@
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+	background: linear-gradient(135deg, #f6f9fc, #eef3ff);
+	color: #0f172a;
+}
+
+.topbar {
+	padding: 18px 24px;
+	background: #0f172a;
+	color: #f8fafc;
+	border-bottom: 4px solid #14b8a6;
+}
+
+.topbar h1 {
+	margin: 0;
+	font-size: 1.4rem;
+}
+
+.topbar p {
+	margin: 6px 0 0;
+	color: #cbd5e1;
+}
+
+.layout {
+	padding: 20px;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(320px, 1fr));
+	gap: 16px;
+}
+
+.card {
+	background: #ffffff;
+	border-radius: 12px;
+	border: 1px solid #dbe3ee;
+	padding: 16px;
+	box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+.card h2 {
+	margin-top: 0;
+	margin-bottom: 10px;
+}
+
+.hint {
+	color: #334155;
+	margin-top: 0;
+}
+
+label {
+	display: block;
+	margin-bottom: 6px;
+	margin-top: 10px;
+	font-weight: 600;
+	color: #1e293b;
+}
+
+input,
+textarea,
+select,
+button {
+	width: 100%;
+	font-size: 0.95rem;
+	border-radius: 8px;
+}
+
+input,
+textarea,
+select {
+	border: 1px solid #cbd5e1;
+	padding: 10px 12px;
+	background: #ffffff;
+	color: #0f172a;
+}
+
+textarea {
+	resize: vertical;
+}
+
+.row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 8px;
+}
+
+button {
+	border: none;
+	cursor: pointer;
+	padding: 10px 14px;
+	background: #e2e8f0;
+	color: #0f172a;
+	font-weight: 600;
+}
+
+button:hover {
+	filter: brightness(0.98);
+}
+
+button:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+}
+
+.primary {
+	background: #2563eb;
+	color: #ffffff;
+}
+
+.accent {
+	background: #0f766e;
+	color: #ffffff;
+}
+
+.switches {
+	margin: 12px 0;
+	display: flex;
+	gap: 20px;
+	flex-wrap: wrap;
+}
+
+.checkbox {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	font-weight: 600;
+}
+
+.checkbox input {
+	width: auto;
+}
+
+.logs {
+	grid-column: 1 / -1;
+}
+
+.log-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 10px;
+}
+
+.log-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.log-actions button {
+	width: auto;
+}
+
+#logOutput {
+	margin: 0;
+	height: 300px;
+	overflow: auto;
+	background: #020617;
+	color: #dbeafe;
+	padding: 12px;
+	border-radius: 8px;
+	font-family: Consolas, "Courier New", monospace;
+	font-size: 0.86rem;
+	line-height: 1.4;
+	border: 1px solid #1e293b;
+}
+
+.hidden {
+	display: none;
+}
+
+@media (max-width: 960px) {
+	.layout {
+		grid-template-columns: 1fr;
+	}
+}

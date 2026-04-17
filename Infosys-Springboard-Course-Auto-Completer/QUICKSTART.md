@@ -59,7 +59,7 @@ python course_completer.py
 Then provide:
 
 - Your Bearer Token (from browser localStorage)
-- Course ID(s) (single or comma-separated, from course URLs)
+- Course ID(s) or URL(s) (single or comma-separated)
 - Optional settings
 
 ### Option 2: Using .env File
@@ -69,6 +69,8 @@ Then provide:
    ```
    INFOSYS_TOKEN=your_token_here
    INFOSYS_COURSE_IDS=lex_auth_xxxxx_shared,lex_auth_yyyyy_shared
+   # optional alternative input
+   INFOSYS_TARGET_URLS=https://infyspringboard.onwingspan.com/web/en/app/toc/lex_auth_012734003600908288382_shared/overview
    AUTO_CONFIRM=false
    DRY_RUN=false
    ```
@@ -77,6 +79,20 @@ Then provide:
    ```bash
    python course_completer.py
    ```
+
+### Option 3: Desktop App (Electron)
+
+1. Open terminal in `electron-app`
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Launch app:
+   ```bash
+   npm start
+   ```
+
+Desktop app supports full completion flow, .env selection, and quick completion by course ID.
 
 ## 📋 Getting Your Credentials
 
@@ -97,6 +113,12 @@ https://infyspringboard.onwingspan.com/web/en/app/toc/[COURSE_ID]/overview
 ```
 
 Copy the `[COURSE_ID]` part.
+
+For viewer URLs, use this relationship:
+
+- `/viewer/hands-on/<content_id>` = practice-problem content item
+- `collectionId=<parent_course_id>` = parent course ID used by this tool
+- `pathId=<node1>,<node2>,...` = child hierarchy path in the course
 
 ## ✨ Features
 

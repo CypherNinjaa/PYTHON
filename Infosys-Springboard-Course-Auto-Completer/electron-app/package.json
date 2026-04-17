@@ -1,0 +1,14 @@
+{
+	"name": "infosys-course-completer-desktop",
+	"version": "1.0.0",
+	"description": "Electron desktop app for Infosys Springboard Course Auto-Completer",
+	"main": "main.js",
+	"scripts": {
+		"start": "electron ."
+	},
+	"author": "",
+	"license": "MIT",
+	"devDependencies": {
+		"electron": "^32.2.0"
+	}
+}
