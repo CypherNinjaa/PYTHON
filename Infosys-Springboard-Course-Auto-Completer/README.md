@@ -40,7 +40,7 @@ A powerful Python tool that automatically completes **ALL** content in your Info
 3. _(Optional)_ **Create .env file for configuration**
    ```bash
    cp .env.example .env
-   # Edit .env and fill in your token and course ID
+   # Edit .env and fill in your token and course ID(s)
    ```
 
 ## 🚀 Usage
@@ -54,7 +54,7 @@ python course_completer.py
 Then follow the prompts to enter:
 
 - Your Bearer Token
-- Course ID
+- Course ID(s) (single or multiple, comma-separated)
 - Optional settings (auto-confirm, dry-run mode)
 
 ### Using .env File
@@ -63,7 +63,7 @@ Then follow the prompts to enter:
 2. Edit `.env` and add your credentials:
    ```
    INFOSYS_TOKEN=your_token_here
-   INFOSYS_COURSE_ID=your_course_id_here
+   INFOSYS_COURSE_IDS=your_course_id_here,another_course_id_here
    ```
 3. Run: `python course_completer.py`
 
@@ -199,8 +199,11 @@ Failed items (2):
 # Required: Your Infosys Springboard Bearer Token
 INFOSYS_TOKEN=eyJhbGciOiJSUzI1NiIs...
 
-# Required: Course ID
-INFOSYS_COURSE_ID=lex_auth_0125409616243425281061_shared
+# Required for course mode: one or many course IDs
+INFOSYS_COURSE_IDS=lex_auth_0125409616243425281061_shared,lex_auth_0138419214303969287290_shared
+
+# Optional legacy single-course variable (still supported)
+# INFOSYS_COURSE_ID=lex_auth_0125409616243425281061_shared
 
 # Optional: Auto-confirm without prompting (default: false)
 AUTO_CONFIRM=false

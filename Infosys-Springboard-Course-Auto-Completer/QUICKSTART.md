@@ -8,7 +8,7 @@ Your comprehensive course completion system is now ready! Here's what you have:
 
 1. **config.py** - Configuration management
    - Loads from .env file automatically
-   - Interactive CLI prompts for token, course ID, and options
+   - Interactive CLI prompts for token, course ID(s), and options
    - Supports environment variables and user input
 
 2. **api_client.py** - Robust API client with:
@@ -59,7 +59,7 @@ python course_completer.py
 Then provide:
 
 - Your Bearer Token (from browser localStorage)
-- Course ID (from course URL)
+- Course ID(s) (single or comma-separated, from course URLs)
 - Optional settings
 
 ### Option 2: Using .env File
@@ -68,7 +68,7 @@ Then provide:
 
    ```
    INFOSYS_TOKEN=your_token_here
-   INFOSYS_COURSE_ID=lex_auth_xxxxx_shared
+   INFOSYS_COURSE_IDS=lex_auth_xxxxx_shared,lex_auth_yyyyy_shared
    AUTO_CONFIRM=false
    DRY_RUN=false
    ```

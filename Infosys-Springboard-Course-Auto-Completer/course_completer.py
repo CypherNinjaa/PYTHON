@@ -96,14 +96,33 @@ class CourseCompleter:
         if self.config.target_type == "playlist":
             return self._resolve_playlist_targets()
 
-        if not self.config.course_id:
-            print_error("Course ID is required in single-course mode")
+        course_ids = []
+
+        if getattr(self.config, "course_ids", None):
+            course_ids = [course_id for course_id in self.config.course_ids if course_id]
+        elif self.config.course_id:
+            course_ids = [self.config.course_id]
+
+        # De-duplicate while preserving order.
+        unique_course_ids = []
+        seen = set()
+        for course_id in course_ids:
+            if course_id in seen:
+                continue
+            seen.add(course_id)
+            unique_course_ids.append(course_id)
+
+        if not unique_course_ids:
+            print_error("At least one Course ID is required in course mode")
             return []
 
+        if len(unique_course_ids) > 1:
+            print_info(f"Using {len(unique_course_ids)} course IDs (processed one by one)")
+
         return [{
-            "id": self.config.course_id,
-            "name": self.config.course_id,
-        }]
+            "id": course_id,
+            "name": course_id,
+        } for course_id in unique_course_ids]
 
     def _resolve_playlist_targets(self) -> List[Dict[str, str]]:
         """Resolve playlist into a list of course targets."""
@@ -191,6 +210,7 @@ class CourseCompleter:
         }
 
         all_completable_items = []
+        prefix_item_names = len(course_targets) > 1
 
         for idx, target in enumerate(course_targets, 1):
             course_id = target["id"]
@@ -210,8 +230,8 @@ class CourseCompleter:
             summary = analyzer.get_summary()
             completable_items = inventory.get_completable_items()
 
-            # Prefix item names in playlist mode to make failures easy to trace.
-            if self.config.target_type == "playlist":
+            # Prefix item names in multi-course mode to make failures easy to trace.
+            if prefix_item_names:
                 for item in completable_items:
                     item.name = f"[{course_name}] {item.name}"
 

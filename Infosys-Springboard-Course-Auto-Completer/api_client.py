@@ -271,54 +271,99 @@ class APIClient:
         """
         url = f"{self.BASE_URL}/api-gw/wn-apis/infosysheadstart/playlist/v2/playlists/fetch"
         headers = self._get_headers(include_wid=user_id)
+        headers["referer"] = f"{self.BASE_URL}/web/en/app/playlist/me"
 
-        payloads = [
-            {
-                "user_id": user_id,
-                "user_id_type": "wid",
-                "status": ["Pending"],
-                "visibility": "all",
-                "page": page,
-                "size": size,
-                "sourceFields": [],
-                "user_meta_required": False,
-                "content_meta_required": False,
-            },
-            {
-                "user_id": user_id,
-                "user_id_type": "wid",
-                "visibility": "all",
-                "page": page,
-                "size": size,
-                "sourceFields": [],
-                "user_meta_required": False,
-                "content_meta_required": False,
-            },
+        status_variants = [
+            ["Created"],
+            ["Created", "Pending"],
+            None,  # no status filter
+            ["Pending"],
         ]
 
+        all_playlists: List[Dict[str, Any]] = []
+        seen_ids = set()
+        next_page = page
+        max_pages = 10
         last_error = None
 
-        for payload in payloads:
-            try:
-                response = self._request("POST", url, headers=headers, json=payload, timeout=20)
+        for _ in range(max_pages):
+            page_playlists: List[Dict[str, Any]] = []
+            page_next = -1
 
-                if not response.ok:
-                    self._handle_response_error(response, "Playlist fetch")
+            for status_filter in status_variants:
+                payload = {
+                    "user_id": user_id,
+                    "user_id_type": "wid",
+                    "visibility": "all",
+                    "page": next_page,
+                    "size": size,
+                    "sourceFields": [],
+                    "user_meta_required": False,
+                    "content_meta_required": False,
+                }
 
-                data = response.json() if response.content else {}
-                playlists = data.get("data", []) if isinstance(data, dict) else []
-                if playlists:
-                    return playlists
+                if status_filter:
+                    payload["status"] = status_filter
 
-            except APIError as e:
-                last_error = e
-            except requests.exceptions.RequestException as e:
-                last_error = e
+                try:
+                    response = self._request("POST", url, headers=headers, json=payload, timeout=20)
 
-        if last_error:
+                    if not response.ok:
+                        # Do not hard-fail on one variant. Continue with fallback variants.
+                        self.logger.debug(
+                            f"Playlist fetch variant failed: status={response.status_code}, payload_status={status_filter}"
+                        )
+                        last_error = APIError(f"Playlist fetch: {response.status_code}")
+                        continue
+
+                    data = response.json() if response.content else {}
+                    if not isinstance(data, dict):
+                        continue
+
+                    page_playlists = data.get("data", []) or []
+                    page_next = data.get("nextPage", -1)
+
+                    # A successful response with data is preferred immediately.
+                    if page_playlists:
+                        break
+
+                    # Keep trying other variants for empty responses.
+                    self.logger.debug(
+                        f"Playlist fetch returned empty data for payload_status={status_filter}"
+                    )
+
+                except requests.exceptions.RequestException as e:
+                    last_error = e
+                    self.logger.debug(
+                        f"Playlist fetch request exception for payload_status={status_filter}: {e}"
+                    )
+
+            if not page_playlists:
+                # No results found on this page across all variants.
+                break
+
+            for playlist in page_playlists:
+                playlist_id = None
+                if isinstance(playlist, dict):
+                    playlist_id = playlist.get("playlist_id") or playlist.get("playlistId")
+
+                if playlist_id and playlist_id in seen_ids:
+                    continue
+
+                if playlist_id:
+                    seen_ids.add(playlist_id)
+
+                all_playlists.append(playlist)
+
+            if page_next in (-1, None):
+                break
+
+            next_page = int(page_next)
+
+        if not all_playlists and last_error:
             self.logger.warning(f"Playlist fetch fallback completed with no playlists: {last_error}")
 
-        return []
+        return all_playlists
 
     def get_playlist_detail(self, playlist_id: str, user_id: str) -> Dict[str, Any]:
         """

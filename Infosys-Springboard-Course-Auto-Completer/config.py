@@ -8,7 +8,7 @@ import sys
 import json
 import re
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
@@ -28,6 +28,7 @@ class Config:
     """Configuration object holding all settings."""
     token: str
     course_id: Optional[str] = None
+    course_ids: Optional[List[str]] = None
     target_type: str = "course"
     playlist_id: Optional[str] = None
     playlist_title: Optional[str] = None
@@ -80,6 +81,26 @@ class ConfigManager:
 
         return None
 
+    @staticmethod
+    def _parse_course_ids(value: str) -> List[str]:
+        """Parse one or many course IDs from env/input text."""
+        if not value:
+            return []
+
+        raw_tokens = re.split(r"[\n,;]+", value)
+        ids: List[str] = []
+        seen = set()
+
+        for token in raw_tokens:
+            course_id = token.strip()
+            if not course_id or course_id in seen:
+                continue
+
+            seen.add(course_id)
+            ids.append(course_id)
+
+        return ids
+
     def get_config(self, skip_validation: bool = False) -> Config:
         """
         Get configuration from environment or prompt user.
@@ -92,7 +113,15 @@ class ConfigManager:
         """
         # Try to get from environment first
         token = os.getenv('INFOSYS_TOKEN') or os.getenv('token')
-        course_id = os.getenv('INFOSYS_COURSE_ID') or os.getenv('courseid')
+        course_ids_raw = (
+            os.getenv('INFOSYS_COURSE_IDS')
+            or os.getenv('courseids')
+            or os.getenv('INFOSYS_COURSE_ID')
+            or os.getenv('courseid')
+            or ""
+        )
+        course_ids = self._parse_course_ids(course_ids_raw)
+        course_id = course_ids[0] if course_ids else None
         env_target_type = (os.getenv('TARGET_TYPE') or "").strip().lower()
         playlist_raw = (
             os.getenv('INFOSYS_PLAYLIST_ID')
@@ -138,15 +167,21 @@ class ConfigManager:
             target_type = default_target
 
         if target_type == 'course':
-            if not course_id:
-                print(f"\n{Colors.CYAN}Enter the Course ID:{Colors.ENDC}")
-                print(f"{Colors.YELLOW}(Get this from course URL: /toc/[COURSE_ID]/overview){Colors.ENDC}")
-                course_id = input(f"{Colors.CYAN}Course ID: {Colors.ENDC}").strip()
+            if not course_ids:
+                print(f"\n{Colors.CYAN}Enter Course ID(s):{Colors.ENDC}")
+                print(f"{Colors.YELLOW}(Use comma/newline separated values for multiple IDs){Colors.ENDC}")
+                print(f"{Colors.YELLOW}(Get IDs from course URL: /toc/[COURSE_ID]/overview){Colors.ENDC}")
+                course_input = input(f"{Colors.CYAN}Course ID(s): {Colors.ENDC}").strip()
+                course_ids = self._parse_course_ids(course_input)
+                course_id = course_ids[0] if course_ids else None
             else:
-                print(f"{Colors.GREEN}✓{Colors.ENDC} Course ID loaded from environment")
+                if len(course_ids) == 1:
+                    print(f"{Colors.GREEN}✓{Colors.ENDC} Course ID loaded from environment")
+                else:
+                    print(f"{Colors.GREEN}✓{Colors.ENDC} {len(course_ids)} course IDs loaded from environment")
 
-            if not course_id:
-                print(f"{Colors.RED}Error: Course ID is required in single-course mode!{Colors.ENDC}")
+            if not course_ids:
+                print(f"{Colors.RED}Error: At least one Course ID is required in course mode!{Colors.ENDC}")
                 sys.exit(1)
         else:
             if playlist_id:
@@ -170,6 +205,7 @@ class ConfigManager:
         config = Config(
             token=token,
             course_id=course_id,
+            course_ids=course_ids,
             target_type=target_type,
             playlist_id=playlist_id,
             auto_confirm=auto_confirm,
@@ -189,8 +225,11 @@ class ConfigManager:
 # Your Infosys Springboard Bearer Token
 INFOSYS_TOKEN=your_bearer_token_here
 
-# Course ID (from course URL)
-INFOSYS_COURSE_ID=lex_auth_xxxxxxxxxxxxxxxxxx_shared
+# Course IDs (single or multiple, comma-separated)
+INFOSYS_COURSE_IDS=lex_auth_xxxxxxxxxxxxxxxxxx_shared,lex_auth_yyyyyyyyyyyyyyyyyy_shared
+
+# Backward-compatible single course ID
+# INFOSYS_COURSE_ID=lex_auth_xxxxxxxxxxxxxxxxxx_shared
 
 # Optional: target type (course|playlist)
 TARGET_TYPE=course
@@ -219,9 +258,13 @@ def create_example_env():
 # Get this from: Browser DevTools → Application → Local Storage → kc-infyspringboard → token field
 INFOSYS_TOKEN=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Ik...
 
-# Course ID (REQUIRED)
-# Get this from course URL: https://infyspringboard.onwingspan.com/web/en/app/toc/[COURSE_ID]/overview
-INFOSYS_COURSE_ID=lex_auth_0125409616243425281061_shared
+# Course IDs (REQUIRED for course mode)
+# Use one ID or multiple comma-separated IDs.
+# Get each from course URL: https://infyspringboard.onwingspan.com/web/en/app/toc/[COURSE_ID]/overview
+INFOSYS_COURSE_IDS=lex_auth_0125409616243425281061_shared
+
+# Backward-compatible single course ID
+# INFOSYS_COURSE_ID=lex_auth_0125409616243425281061_shared
 
 # Target type: course or playlist (Optional, default: course)
 TARGET_TYPE=course
