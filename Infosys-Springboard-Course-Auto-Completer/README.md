@@ -69,6 +69,30 @@ Then follow the prompts to enter:
    ```
 3. Run: `python course_completer.py`
 
+### RF Skilling Academy Browser Flow
+
+This repository now also includes a reusable Playwright script for RF Skilling Academy courses:
+
+```bash
+python rf_skilling_completer.py --url "https://rfskillingacademy.com/en/skill_development/e-course/RF_492_en/AI-Machine-Learning-Engineer-Certificate-Course"
+```
+
+Notes:
+
+- Run in headed mode (default) so you can log in manually when prompted.
+- First-time Playwright setup:
+
+  ```bash
+  pip install -r requirements.txt
+  playwright install chromium
+  ```
+
+- Optional flags:
+  - `--headless` (not recommended when manual login is needed)
+  - `--max-modules 20`
+  - `--max-slide-clicks 260`
+  - `--slow-mo 100`
+
 ## 🔑 How to Get Your Bearer Token
 
 1. Open **Infosys Springboard** and log in

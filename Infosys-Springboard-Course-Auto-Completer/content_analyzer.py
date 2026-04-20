@@ -106,7 +106,8 @@ class ContentAnalyzer:
             'exam',
             'application/integrated-hands-on',
             'application/web-module-exercise',
-            'application/iap-assessment'
+            'application/iap-assessment',
+            'application/rdbms'
         ],
         ContentType.DISCUSSION: ['discussion', 'forum'],
         ContentType.SECTION: ['application/vnd.ekstep.content-collection'],
