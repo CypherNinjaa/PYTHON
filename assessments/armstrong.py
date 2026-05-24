@@ -21,4 +21,3 @@ if result ==num:
     print(num," is an armstrong number")
 else:
     print("it is not an armstrong")
-
