@@ -7,3 +7,5 @@ for char in text:
     if char == letter:
         count+=1
 print(letter,"appear",count,"times in file")
+text = text.strip()
+print("the number of character in file: ",len(text))
